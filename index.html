@@ -307,6 +307,51 @@
                     <input type="password" id="api-key" placeholder="sk-...">
                     <p class="hint">Zonder key gebruiken we de browser herkenning.</p>
                 </div>
+                <div class="input-group">
+                    <label>OpenAI Model:</label>
+                    <div style="text-align: left; margin-top: 10px;">
+                        <div>
+                            <input type="radio" id="model-whisper" name="openai_model" value="whisper-1"
+                                style="width: auto;">
+                            <label for="model-whisper" style="display: inline; font-weight: normal;">Whisper-1
+                                (Standaard)</label>
+                        </div>
+                        <div style="margin-top: 5px;">
+                            <input type="radio" id="model-gpt4o-mini" name="openai_model" value="gpt-4o-mini-transcribe"
+                                style="width: auto;">
+                            <label for="model-gpt4o-mini" style="display: inline; font-weight: normal;">GPT-4o
+                                Mini</label>
+                        </div>
+                        <div style="margin-top: 5px;">
+                            <input type="radio" id="model-gpt4o" name="openai_model" value="gpt-4o-transcribe"
+                                style="width: auto;">
+                            <label for="model-gpt4o" style="display: inline; font-weight: normal;">GPT-4o</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Moeilijkheidsgraad:</label>
+                    <div style="text-align: left; margin-top: 10px;">
+                        <div>
+                            <input type="radio" id="diff-tolerant" name="difficulty" value="tolerant"
+                                style="width: auto;">
+                            <label for="diff-tolerant" style="display: inline; font-weight: normal;">Fouttolerant (1
+                                medeklinker)</label>
+                        </div>
+                        <div style="margin-top: 5px;">
+                            <input type="radio" id="diff-normal" name="difficulty" value="normal" style="width: auto;">
+                            <label for="diff-normal" style="display: inline; font-weight: normal;">Normaal (Max 2
+                                pogingen)</label>
+                        </div>
+                        <div style="margin-top: 5px;">
+                            <input type="radio" id="diff-strict" name="difficulty" value="strict" style="width: auto;">
+                            <label for="diff-strict" style="display: inline; font-weight: normal;">Streng (Max 3
+                                pogingen)</label>
+                        </div>
+                    </div>
+                </div>
+
                 <button id="save-settings" class="primary-btn">Opslaan</button>
                 <button id="close-settings" class="secondary-btn">Sluiten</button>
             </div>
@@ -327,7 +372,12 @@
         let currentWord = "";
         let score = 0;
         let apiKey = localStorage.getItem('openai_api_key') || "";
+        let selectedModel = localStorage.getItem('openai_model') || 'whisper-1';
+        let difficulty = localStorage.getItem('difficulty') || 'tolerant';
+
+        let attempts = 0;
         let isListening = false;
+
         let recognition = null;
 
         // DOM Elements
@@ -345,7 +395,12 @@
         // Initialize
         function init() {
             apiKeyInput.value = apiKey;
+            const diffRadio = document.querySelector(`input[name="difficulty"][value="${difficulty}"]`);
+            if (diffRadio) diffRadio.checked = true;
+            const modelRadio = document.querySelector(`input[name="openai_model"][value="${selectedModel}"]`);
+            if (modelRadio) modelRadio.checked = true;
             setupSpeechRecognition();
+
             nextWord();
 
             micBtn.addEventListener('click', toggleListening);
@@ -392,6 +447,7 @@
         }
 
         function nextWord() {
+            attempts = 0;
             currentWord = WORDS[Math.floor(Math.random() * WORDS.length)];
             wordElement.textContent = currentWord;
             feedbackElement.textContent = "Klik op de microfoon en lees het woord!";
@@ -447,13 +503,20 @@
             // Simple normalization
             const normalizedSpoken = spokenText.replace(/[.,!?]/g, '');
 
-            if (isFlexibleMatch(normalizedSpoken, currentWord)) {
+            let isCorrect = false;
+            if (difficulty === 'tolerant') {
+                isCorrect = isFlexibleMatch(normalizedSpoken, currentWord);
+            } else {
+                isCorrect = normalizedSpoken === currentWord;
+            }
 
+            if (isCorrect) {
                 handleSuccess();
             } else {
                 handleFailure(normalizedSpoken);
             }
         }
+
 
         function handleSuccess() {
             feedbackElement.textContent = `Goed zo! "${currentWord}" is correct! 🎉`;
@@ -471,11 +534,28 @@
         }
 
         function handleFailure(spoken) {
-            feedbackElement.textContent = `Ik hoorde "${spoken}". Probeer het nog eens!`;
-            feedbackElement.style.color = "var(--error-color)";
-            wordElement.parentElement.classList.add('shake');
-            setTimeout(() => wordElement.parentElement.classList.remove('shake'), 500);
+            attempts++;
+            let maxAttempts = Infinity;
+
+            if (difficulty === 'normal') maxAttempts = 2;
+            if (difficulty === 'strict') maxAttempts = 3;
+
+            if (attempts >= maxAttempts) {
+                feedbackElement.textContent = `Helaas! Het woord was "${currentWord}". Volgend woord...`;
+                feedbackElement.style.color = "var(--error-color)";
+                wordElement.parentElement.classList.add('shake');
+                setTimeout(() => {
+                    wordElement.parentElement.classList.remove('shake');
+                    nextWord();
+                }, 2000);
+            } else {
+                feedbackElement.textContent = `Ik hoorde "${spoken}". Probeer het nog eens!`;
+                feedbackElement.style.color = "var(--error-color)";
+                wordElement.parentElement.classList.add('shake');
+                setTimeout(() => wordElement.parentElement.classList.remove('shake'), 500);
+            }
         }
+
 
         // OpenAI Integration (Audio Recording & Whisper API)
         let mediaRecorder;
@@ -521,8 +601,9 @@
 
             const formData = new FormData();
             formData.append("file", audioBlob, "audio.webm");
-            formData.append("model", "whisper-1");
+            formData.append("model", selectedModel);
             formData.append("language", "nl");
+
 
             // Add prompt with the list of words to bias the model
             // Limit to a reasonable length if the list grows too large (Whisper limit is 224 tokens)
@@ -553,10 +634,21 @@
 
         function saveSettings() {
             apiKey = apiKeyInput.value.trim();
+            difficulty = document.querySelector('input[name="difficulty"]:checked').value;
+            selectedModel = document.querySelector('input[name="openai_model"]:checked').value;
+
             localStorage.setItem('openai_api_key', apiKey);
+            localStorage.setItem('difficulty', difficulty);
+            localStorage.setItem('openai_model', selectedModel);
+
             settingsModal.classList.add('hidden');
-            feedbackElement.textContent = apiKey ? "OpenAI modus geactiveerd!" : "Browser modus geactiveerd.";
+
+            feedbackElement.textContent = "Instellingen opgeslagen!";
+
+            // Reset current word to apply new difficulty logic cleanly if needed
+            nextWord();
         }
+
 
         function confettiEffect() {
             // Simple confetti simulation using emojis
