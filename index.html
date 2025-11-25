@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leren Lezen met Plezier - Openai!</title>
+    <title>Leren Lezen met Plezier - Openai V1!</title>
     <link
         href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Fredoka:wght@400;600&display=swap"
         rel="stylesheet">
@@ -423,13 +423,32 @@
             }
         }
 
+        function getConsonants(word) {
+            // Treat y as a vowel for this purpose, along with standard vowels
+            return word.toLowerCase().replace(/[aeiouy\s]/g, '').split('');
+        }
+
+        function isFlexibleMatch(spoken, target) {
+            const spokenConsonants = getConsonants(spoken);
+            const targetConsonants = getConsonants(target);
+
+            // If target has no consonants (unlikely in this list but possible), fall back to strict check
+            if (targetConsonants.length === 0) {
+                return spoken === target;
+            }
+
+            // Check for intersection: at least one matching consonant
+            return targetConsonants.some(c => spokenConsonants.includes(c));
+        }
+
         function handleResult(spokenText) {
             console.log("Spoken:", spokenText, "Expected:", currentWord);
 
             // Simple normalization
             const normalizedSpoken = spokenText.replace(/[.,!?]/g, '');
 
-            if (normalizedSpoken === currentWord) {
+            if (isFlexibleMatch(normalizedSpoken, currentWord)) {
+
                 handleSuccess();
             } else {
                 handleFailure(normalizedSpoken);
