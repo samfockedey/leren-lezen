@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leren Lezen met Plezier - Openai!</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Fredoka:wght@400;600&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --accent-color: #FFE66D;
+            --text-color: #2C3E50;
+            --bg-color: #F7F9FC;
+            --card-bg: #FFFFFF;
+            --success-color: #2ECC71;
+            --error-color: #E74C3C;
+        }
+
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-family: 'Comic Neue', cursive;
+            font-weight: 700;
+            color: var(--success-color);
+            margin: 0;
+            font-size: 2rem;
+        }
+
+        .score-board {
+            background: var(--accent-color);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        #settings-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        #settings-btn:hover {
+            transform: rotate(45deg);
+        }
+
+        .word-card {
+            background: var(--card-bg);
+            border-radius: 30px;
+            padding: 40px 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border: 5px solid var(--secondary-color);
+            min-height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s;
+        }
+
+        .word-card h2 {
+            font-size: 4rem;
+            margin: 0;
+            color: var(--text-color);
+            letter-spacing: 2px;
+        }
+
+        .feedback-area {
+            min-height: 60px;
+            margin-bottom: 30px;
+            font-size: 1.2rem;
+            color: #666;
+        }
+
+        .mic-button {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            font-size: 3rem;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #D64545;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+        }
+
+        .mic-button:active {
+            transform: translateY(6px);
+            box-shadow: none;
+        }
+
+        .mic-button.listening {
+            background: var(--error-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .secondary-btn {
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 15px;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 1.1rem;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 4px 0 #3DBDB4;
+        }
+
+        .secondary-btn:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 400px;
+            text-align: left;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-family: inherit;
+        }
+
+        .hint {
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .primary-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+        }
+
+        /* Animations */
+        .shake {
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-10px);
+            }
+
+            50% {
+                transform: translateX(10px);
+            }
+
+            75% {
+                transform: translateX(-10px);
+            }
+
+            100% {
+                transform: translateX(0);
+            }
+        }
+
+        .celebrate {
+            animation: pop 0.5s;
+        }
+
+        @keyframes pop {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.2);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <header>
+            <h1 style="color: #2ECC71;">Leren Lezen</h1>
+            <div class="score-board">
+                <span>Sterren: <span id="score">0</span> ⭐</span>
+            </div>
+            <button id="settings-btn" aria-label="Instellingen">⚙️</button>
+        </header>
+
+        <main>
+            <div class="word-card">
+                <h2 id="current-word">...</h2>
+            </div>
+
+            <div class="feedback-area" id="feedback">
+                Klik op de microfoon en lees het woord!
+            </div>
+
+            <div class="controls">
+                <button id="mic-btn" class="mic-button">
+                    <span class="mic-icon">🎤</span>
+                </button>
+            </div>
+
+            <button id="next-btn" class="secondary-btn" style="display: none;">Volgend Woord ➡️</button>
+        </main>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Instellingen</h3>
+                <div class="input-group">
+                    <label for="api-key">OpenAI API Key (Optioneel):</label>
+                    <input type="password" id="api-key" placeholder="sk-...">
+                    <p class="hint">Zonder key gebruiken we de browser herkenning.</p>
+                </div>
+                <button id="save-settings" class="primary-btn">Opslaan</button>
+                <button id="close-settings" class="secondary-btn">Sluiten</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const WORDS = [
+            "aan", "baas", "baan", "beer", "beek", "beet", "bek", "ben", "bes", "bij", "bijt", "boom", "boon",
+            "deer", "dij", "dijk", "dik", "doe", "doop", "een", "eet", "en", "haar", "haan", "haas", "hoor",
+            "ijs", "in", "is", "kaak", "kaas", "kaat", "ken", "keer", "kees", "kijk", "kik", "koek", "maak",
+            "maar", "maas", "maat", "mee", "meer", "mees", "mep", "mes", "mijn", "naam", "nee", "neem", "neer",
+            "nek", "nep", "net", "noor", "paar", "peer", "pen", "pijn", "pim", "pit", "poot", "raap", "raam",
+            "raar", "raas", "ree", "rek", "ren", "rij", "rijk", "rijm", "rijp", "rik", "rit", "roep", "room",
+            "roos", "sik", "sip", "taak", "teen", "teer", "tijs", "tik", "tip", "toen", "toon", "vaar", "vaak",
+            "vaas", "vaat", "veer", "ven", "ver", "vet", "vin", "voet", "zij", "zijn", "zoen", "zoet"
+        ];
+
+        let currentWord = "";
+        let score = 0;
+        let apiKey = localStorage.getItem('openai_api_key') || "";
+        let isListening = false;
+        let recognition = null;
+
+        // DOM Elements
+        const wordElement = document.getElementById('current-word');
+        const feedbackElement = document.getElementById('feedback');
+        const micBtn = document.getElementById('mic-btn');
+        const scoreElement = document.getElementById('score');
+        const nextBtn = document.getElementById('next-btn');
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsBtn = document.getElementById('close-settings');
+        const saveSettingsBtn = document.getElementById('save-settings');
+        const apiKeyInput = document.getElementById('api-key');
+
+        // Initialize
+        function init() {
+            apiKeyInput.value = apiKey;
+            setupSpeechRecognition();
+            nextWord();
+
+            micBtn.addEventListener('click', toggleListening);
+            nextBtn.addEventListener('click', nextWord);
+
+            settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+            closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+            saveSettingsBtn.addEventListener('click', saveSettings);
+        }
+
+        function setupSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.lang = 'nl-BE'; // Belgian Dutch
+                recognition.continuous = false;
+                recognition.interimResults = false;
+
+                recognition.onstart = () => {
+                    isListening = true;
+                    updateMicUI();
+                    feedbackElement.textContent = "Luisteren...";
+                };
+
+                recognition.onend = () => {
+                    isListening = false;
+                    updateMicUI();
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript.toLowerCase().trim();
+                    handleResult(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    console.error(event.error);
+                    feedbackElement.textContent = "Oeps, ik hoorde niets. Probeer opnieuw!";
+                    isListening = false;
+                    updateMicUI();
+                };
+            } else {
+                feedbackElement.textContent = "Browser ondersteunt geen spraakherkenning. Gebruik Chrome of Edge.";
+                micBtn.disabled = true;
+            }
+        }
+
+        function nextWord() {
+            currentWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+            wordElement.textContent = currentWord;
+            feedbackElement.textContent = "Klik op de microfoon en lees het woord!";
+            feedbackElement.style.color = "#666";
+            nextBtn.style.display = "none";
+            wordElement.parentElement.classList.remove('shake', 'celebrate');
+        }
+
+        function toggleListening() {
+            if (isListening) {
+                if (recognition) recognition.stop();
+                // If using OpenAI audio recorder, stop it here
+            } else {
+                if (apiKey) {
+                    // Use OpenAI Whisper if key is present
+                    recordAndSendToOpenAI();
+                } else {
+                    // Use Browser Native
+                    if (recognition) recognition.start();
+                }
+            }
+        }
+
+        function updateMicUI() {
+            if (isListening) {
+                micBtn.classList.add('listening');
+            } else {
+                micBtn.classList.remove('listening');
+            }
+        }
+
+        function handleResult(spokenText) {
+            console.log("Spoken:", spokenText, "Expected:", currentWord);
+
+            // Simple normalization
+            const normalizedSpoken = spokenText.replace(/[.,!?]/g, '');
+
+            if (normalizedSpoken === currentWord) {
+                handleSuccess();
+            } else {
+                handleFailure(normalizedSpoken);
+            }
+        }
+
+        function handleSuccess() {
+            feedbackElement.textContent = `Goed zo! "${currentWord}" is correct! 🎉`;
+            feedbackElement.style.color = "var(--success-color)";
+            score++;
+            scoreElement.textContent = score;
+            wordElement.parentElement.classList.add('celebrate');
+            confettiEffect();
+            nextBtn.style.display = "inline-block";
+
+            // Auto next after 2 seconds
+            setTimeout(() => {
+                if (nextBtn.style.display !== "none") nextWord();
+            }, 2000);
+        }
+
+        function handleFailure(spoken) {
+            feedbackElement.textContent = `Ik hoorde "${spoken}". Probeer het nog eens!`;
+            feedbackElement.style.color = "var(--error-color)";
+            wordElement.parentElement.classList.add('shake');
+            setTimeout(() => wordElement.parentElement.classList.remove('shake'), 500);
+        }
+
+        // OpenAI Integration (Audio Recording & Whisper API)
+        let mediaRecorder;
+        let audioChunks = [];
+
+        async function recordAndSendToOpenAI() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    sendToWhisper(audioBlob);
+                };
+
+                mediaRecorder.start();
+                isListening = true;
+                updateMicUI();
+                feedbackElement.textContent = "Luisteren (OpenAI)...";
+
+                // Stop recording after 3 seconds (approx word length)
+                setTimeout(() => {
+                    if (mediaRecorder.state === "recording") {
+                        mediaRecorder.stop();
+                        isListening = false;
+                        updateMicUI();
+                    }
+                }, 3000);
+
+            } catch (err) {
+                console.error("Microphone access denied:", err);
+                feedbackElement.textContent = "Geen toegang tot microfoon.";
+            }
+        }
+
+        async function sendToWhisper(audioBlob) {
+            feedbackElement.textContent = "Analyseren...";
+
+            const formData = new FormData();
+            formData.append("file", audioBlob, "audio.webm");
+            formData.append("model", "whisper-1");
+            formData.append("language", "nl");
+
+            // Add prompt with the list of words to bias the model
+            // Limit to a reasonable length if the list grows too large (Whisper limit is 224 tokens)
+            const promptWords = WORDS.join(", ");
+            formData.append("prompt", `Context: ${promptWords}`);
+
+            try {
+                const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.text) {
+                    const transcript = data.text.toLowerCase().trim().replace(/[.,!?]/g, '');
+                    handleResult(transcript);
+                } else {
+                    throw new Error(data.error?.message || "Unknown error");
+                }
+            } catch (error) {
+                console.error("OpenAI Error:", error);
+                feedbackElement.textContent = "Fout bij analyse. Check je API key.";
+            }
+        }
+
+        function saveSettings() {
+            apiKey = apiKeyInput.value.trim();
+            localStorage.setItem('openai_api_key', apiKey);
+            settingsModal.classList.add('hidden');
+            feedbackElement.textContent = apiKey ? "OpenAI modus geactiveerd!" : "Browser modus geactiveerd.";
+        }
+
+        function confettiEffect() {
+            // Simple confetti simulation using emojis
+            const colors = ['🔴', '🟡', '🟢', '🔵', '🟣'];
+            const container = document.querySelector('.app-container');
+
+            for (let i = 0; i < 20; i++) {
+                const el = document.createElement('div');
+                el.textContent = colors[Math.floor(Math.random() * colors.length)];
+                el.style.position = 'absolute';
+                el.style.left = Math.random() * 100 + '%';
+                el.style.top = '50%';
+                el.style.fontSize = '20px';
+                el.style.pointerEvents = 'none';
+                el.style.transition = 'all 1s ease-out';
+
+                document.body.appendChild(el);
+
+                setTimeout(() => {
+                    el.style.transform = `translate(${Math.random() * 200 - 100}px, ${Math.random() * 200 + 100}px) rotate(${Math.random() * 360}deg)`;
+                    el.style.opacity = '0';
+                }, 50);
+
+                setTimeout(() => el.remove(), 1000);
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
