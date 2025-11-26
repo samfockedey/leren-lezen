@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leren Lezen met Plezier - Openai V1!</title>
+    <title>Leren Lezen met Plezier - Openai V2!</title>
     <link
         href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Fredoka:wght@400;600&display=swap"
         rel="stylesheet">
@@ -374,6 +374,9 @@
         let apiKey = localStorage.getItem('openai_api_key') || "";
         let selectedModel = localStorage.getItem('openai_model') || 'whisper-1';
         let difficulty = localStorage.getItem('difficulty') || 'tolerant';
+        let wordHistory = [];
+
+
 
         let attempts = 0;
         let isListening = false;
@@ -448,8 +451,25 @@
 
         function nextWord() {
             attempts = 0;
-            currentWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+            let newWord = "";
+
+            // Try to find a unique word
+            let safetyCounter = 0;
+            do {
+                newWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+                safetyCounter++;
+            } while (wordHistory.includes(newWord) && safetyCounter < 100);
+
+            currentWord = newWord;
+
+            // Update history
+            wordHistory.push(currentWord);
+            if (wordHistory.length > 10) {
+                wordHistory.shift();
+            }
+
             wordElement.textContent = currentWord;
+
             feedbackElement.textContent = "Klik op de microfoon en lees het woord!";
             feedbackElement.style.color = "#666";
             nextBtn.style.display = "none";
@@ -607,8 +627,8 @@
 
             // Add prompt with the list of words to bias the model
             // Limit to a reasonable length if the list grows too large (Whisper limit is 224 tokens)
-            const promptWords = WORDS.join(", ");
-            formData.append("prompt", `Context: ${promptWords}`);
+            //const promptWords = WORDS.join(", ");
+            //formData.append("prompt", `Context: ${promptWords}`);
 
             try {
                 const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
