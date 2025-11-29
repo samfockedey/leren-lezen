@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leren Lezen met Plezier - Openai V2!</title>
+    <title>V3 Leren Lezen!</title>
     <link
         href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Fredoka:wght@400;600&display=swap"
         rel="stylesheet">
@@ -267,6 +267,60 @@
                 transform: scale(1);
             }
         }
+
+        /* User Management Styles */
+        .user-list {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0;
+        }
+
+        .user-list li {
+            background: #f0f0f0;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .delete-user-btn {
+            background: var(--error-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .user-select-btn {
+            display: block;
+            width: 100%;
+            margin: 10px 0;
+            padding: 15px;
+            font-size: 1.2rem;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-family: 'Fredoka', sans-serif;
+        }
+
+        .user-select-btn:hover {
+            transform: scale(1.02);
+            filter: brightness(1.1);
+        }
+
+        #player-display {
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-right: 15px;
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 
@@ -275,6 +329,7 @@
         <header>
             <h1 style="color: #2ECC71;">Leren Lezen</h1>
             <div class="score-board">
+                <span id="player-display" style="display:none">Speler: <span id="player-name"></span> | </span>
                 <span>Sterren: <span id="score">0</span> ⭐</span>
             </div>
             <button id="settings-btn" aria-label="Instellingen">⚙️</button>
@@ -298,10 +353,34 @@
             <button id="next-btn" class="secondary-btn" style="display: none;">Volgend Woord ➡️</button>
         </main>
 
+        <!-- User Selection Modal -->
+        <div id="user-selection-modal" class="modal hidden">
+            <div class="modal-content" style="text-align: center;">
+                <h3>Wie gaat er spelen?</h3>
+                <div id="user-selection-list">
+                    <!-- User buttons go here -->
+                </div>
+                <button id="guest-play-btn" class="secondary-btn" style="background: #95a5a6; margin-top: 20px;">Als
+                    gast spelen</button>
+            </div>
+        </div>
+
         <!-- Settings Modal -->
         <div id="settings-modal" class="modal hidden">
             <div class="modal-content">
                 <h3>Instellingen</h3>
+
+                <div class="input-group">
+                    <label>Gebruikersbeheer (Max 5):</label>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <input type="text" id="new-user-name" placeholder="Voornaam" maxlength="15">
+                        <button id="add-user-btn" class="primary-btn" style="padding: 10px;">+</button>
+                    </div>
+                    <ul id="user-list" class="user-list">
+                        <!-- Users will be added here -->
+                    </ul>
+                </div>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
                 <div class="input-group">
                     <label for="api-key">OpenAI API Key (Optioneel):</label>
                     <input type="password" id="api-key" placeholder="sk-...">
@@ -376,6 +455,10 @@
         let difficulty = localStorage.getItem('difficulty') || 'tolerant';
         let wordHistory = [];
 
+        // User Management State
+        let users = JSON.parse(localStorage.getItem('users') || '[]');
+        let currentUser = null;
+
 
 
         let attempts = 0;
@@ -395,8 +478,21 @@
         const saveSettingsBtn = document.getElementById('save-settings');
         const apiKeyInput = document.getElementById('api-key');
 
+        // User Management Elements
+        const userSelectionModal = document.getElementById('user-selection-modal');
+        const userSelectionList = document.getElementById('user-selection-list');
+        const guestPlayBtn = document.getElementById('guest-play-btn');
+        const newUserInput = document.getElementById('new-user-name');
+        const addUserBtn = document.getElementById('add-user-btn');
+        const userListElement = document.getElementById('user-list');
+        const playerDisplay = document.getElementById('player-display');
+        const playerNameSpan = document.getElementById('player-name');
+
         // Initialize
         function init() {
+            loadUsers();
+            checkUserSelection();
+
             apiKeyInput.value = apiKey;
             const diffRadio = document.querySelector(`input[name="difficulty"][value="${difficulty}"]`);
             if (diffRadio) diffRadio.checked = true;
@@ -409,9 +505,108 @@
             micBtn.addEventListener('click', toggleListening);
             nextBtn.addEventListener('click', nextWord);
 
-            settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+            settingsBtn.addEventListener('click', () => {
+                renderUserList();
+                settingsModal.classList.remove('hidden');
+            });
             closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
             saveSettingsBtn.addEventListener('click', saveSettings);
+
+            // User Management Listeners
+            addUserBtn.addEventListener('click', addUser);
+            guestPlayBtn.addEventListener('click', () => {
+                userSelectionModal.classList.add('hidden');
+                currentUser = null;
+                updatePlayerDisplay();
+            });
+        }
+
+        // User Management Functions
+        function loadUsers() {
+            users = JSON.parse(localStorage.getItem('users') || '[]');
+        }
+
+        function saveUsers() {
+            localStorage.setItem('users', JSON.stringify(users));
+        }
+
+        function checkUserSelection() {
+            if (users.length > 0) {
+                renderUserSelection();
+                userSelectionModal.classList.remove('hidden');
+            }
+        }
+
+        function renderUserSelection() {
+            userSelectionList.innerHTML = '';
+            users.forEach(user => {
+                const btn = document.createElement('button');
+                btn.className = 'user-select-btn';
+                btn.textContent = `👤 ${user}`;
+                btn.onclick = () => selectUser(user);
+                userSelectionList.appendChild(btn);
+            });
+        }
+
+        function selectUser(name) {
+            currentUser = name;
+            userSelectionModal.classList.add('hidden');
+            updatePlayerDisplay();
+            // Load user specific score if we wanted to implement that later
+        }
+
+        function updatePlayerDisplay() {
+            if (currentUser) {
+                playerDisplay.style.display = 'inline';
+                playerNameSpan.textContent = currentUser;
+            } else {
+                playerDisplay.style.display = 'none';
+            }
+        }
+
+        function addUser() {
+            const name = newUserInput.value.trim();
+            if (!name) return;
+
+            if (users.length >= 5) {
+                alert("Maximaal 5 gebruikers toegestaan.");
+                return;
+            }
+
+            if (users.includes(name)) {
+                alert("Deze naam bestaat al.");
+                return;
+            }
+
+            users.push(name);
+            saveUsers();
+            newUserInput.value = '';
+            renderUserList();
+        }
+
+        function deleteUser(name) {
+            if (confirm(`Weet je zeker dat je "${name}" wilt verwijderen?`)) {
+                users = users.filter(u => u !== name);
+                saveUsers();
+                renderUserList();
+
+                if (currentUser === name) {
+                    currentUser = null;
+                    updatePlayerDisplay();
+                }
+            }
+        }
+
+        function renderUserList() {
+            userListElement.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${user}</span>
+                    <button class="delete-user-btn" onclick="deleteUser('${user}')">🗑️</button>
+                `;
+                userListElement.appendChild(li);
+            });
         }
 
         function setupSpeechRecognition() {
