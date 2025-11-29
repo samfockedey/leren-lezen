@@ -321,6 +321,46 @@
             margin-right: 15px;
             font-size: 1.2rem;
         }
+
+        /* Reward Styles */
+        .reward-modal-content {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .reward-image {
+            max-width: 100%;
+            max-height: 60vh;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            margin: 20px 0;
+        }
+
+        .photo-upload-area {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 10px;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .photo-upload-area:hover {
+            background: #f9f9f9;
+        }
+
+        .photo-count-badge {
+            background: var(--accent-color);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            margin-left: 5px;
+        }
     </style>
 </head>
 
@@ -365,6 +405,18 @@
             </div>
         </div>
 
+        <!-- Reward Modal -->
+        <div id="reward-modal" class="modal hidden">
+            <div class="reward-modal-content">
+                <h2 style="color: var(--primary-color);">🎉 BELONING! 🎉</h2>
+                <div id="reward-image-container">
+                    <!-- Image goes here -->
+                </div>
+                <p style="font-size: 1.2rem;">Goed gedaan! Je hebt 5 woorden goed!</p>
+                <button id="close-reward-btn" class="primary-btn">Verder spelen ➡️</button>
+            </div>
+        </div>
+
         <!-- Settings Modal -->
         <div id="settings-modal" class="modal hidden">
             <div class="modal-content">
@@ -380,6 +432,25 @@
                         <!-- Users will be added here -->
                     </ul>
                 </div>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+                <!-- Rewards Section -->
+                <div class="input-group" id="rewards-section" style="display:none;">
+                    <label>Beloningen (Foto's):</label>
+                    <p class="hint">Upload leuke foto's voor <span id="settings-user-name"></span>. Na elke 5 goede
+                        antwoorden wordt er eentje getoond!</p>
+
+                    <div class="photo-upload-area" onclick="document.getElementById('photo-input').click()">
+                        📸 Klik hier om foto's toe te voegen
+                        <input type="file" id="photo-input" multiple accept="image/*" style="display: none;">
+                    </div>
+                    <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Aantal foto's: <span id="photo-count">0</span></span>
+                        <button id="clear-photos-btn" class="delete-user-btn" style="background: #e74c3c;">Wis alle
+                            foto's</button>
+                    </div>
+                </div>
+
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
                 <div class="input-group">
                     <label for="api-key">OpenAI API Key (Optioneel):</label>
@@ -459,6 +530,12 @@
         let users = JSON.parse(localStorage.getItem('users') || '[]');
         let currentUser = null;
 
+        // Reward System State
+        let correctAnswersCounter = 0;
+        let lastShownPhotos = []; // Keep track of IDs to avoid repeats
+        const REWARD_THRESHOLD = 5;
+        let db = null; // IndexedDB instance
+
 
 
         let attempts = 0;
@@ -488,8 +565,19 @@
         const playerDisplay = document.getElementById('player-display');
         const playerNameSpan = document.getElementById('player-name');
 
+        // Reward Elements
+        const rewardModal = document.getElementById('reward-modal');
+        const rewardImageContainer = document.getElementById('reward-image-container');
+        const closeRewardBtn = document.getElementById('close-reward-btn');
+        const rewardsSection = document.getElementById('rewards-section');
+        const settingsUserName = document.getElementById('settings-user-name');
+        const photoInput = document.getElementById('photo-input');
+        const photoCountSpan = document.getElementById('photo-count');
+        const clearPhotosBtn = document.getElementById('clear-photos-btn');
+
         // Initialize
         function init() {
+            initDB();
             loadUsers();
             checkUserSelection();
 
@@ -519,6 +607,164 @@
                 currentUser = null;
                 updatePlayerDisplay();
             });
+
+            // Reward Listeners
+            closeRewardBtn.addEventListener('click', () => {
+                rewardModal.classList.add('hidden');
+                nextWord();
+            });
+
+            photoInput.addEventListener('change', handlePhotoUpload);
+            clearPhotosBtn.addEventListener('click', clearUserPhotos);
+        }
+
+        // --- IndexedDB Implementation ---
+        function initDB() {
+            const request = indexedDB.open("LerenLezenDB", 1);
+
+            request.onerror = (event) => {
+                console.error("Database error:", event.target.error);
+            };
+
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                // Create an object store for photos
+                // keyPath is auto-incremented id
+                // We also create an index on 'userId' to query photos by user
+                const objectStore = db.createObjectStore("photos", { keyPath: "id", autoIncrement: true });
+                objectStore.createIndex("userId", "userId", { unique: false });
+            };
+
+            request.onsuccess = (event) => {
+                db = event.target.result;
+                console.log("DB Initialized");
+            };
+        }
+
+        function savePhoto(userId, blob) {
+            if (!db) return;
+            const transaction = db.transaction(["photos"], "readwrite");
+            const objectStore = transaction.objectStore("photos");
+            objectStore.add({ userId: userId, image: blob, timestamp: Date.now() });
+        }
+
+        function getUserPhotos(userId) {
+            return new Promise((resolve, reject) => {
+                if (!db) return resolve([]);
+                const transaction = db.transaction(["photos"], "readonly");
+                const objectStore = transaction.objectStore("photos");
+                const index = objectStore.index("userId");
+                const request = index.getAll(userId);
+
+                request.onsuccess = () => {
+                    resolve(request.result);
+                };
+                request.onerror = () => {
+                    reject(request.error);
+                };
+            });
+        }
+
+        function deleteUserPhotos(userId) {
+            if (!db) return;
+            const transaction = db.transaction(["photos"], "readwrite");
+            const objectStore = transaction.objectStore("photos");
+            const index = objectStore.index("userId");
+
+            // This is a bit complex in IDB without a cursor, but for now we can just iterate
+            // Or simpler: get all keys for user and delete them
+            const request = index.openCursor(IDBKeyRange.only(userId));
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    cursor.delete();
+                    cursor.continue();
+                } else {
+                    updatePhotoCount();
+                }
+            };
+        }
+
+        // --- Reward Logic ---
+
+        async function handlePhotoUpload(event) {
+            if (!currentUser) return;
+            const files = event.target.files;
+            if (!files.length) return;
+
+            let processed = 0;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                // Resize/Compress logic could go here, but for now just save raw blob
+                // to keep it simple.
+                savePhoto(currentUser, file);
+                processed++;
+            }
+
+            // Wait a bit for transactions to likely finish then update UI
+            setTimeout(updatePhotoCount, 500);
+            alert(`${processed} foto('s) toegevoegd!`);
+            photoInput.value = ''; // Reset input
+        }
+
+        function clearUserPhotos() {
+            if (!currentUser) return;
+            if (confirm("Weet je zeker dat je alle foto's voor deze gebruiker wilt wissen?")) {
+                deleteUserPhotos(currentUser);
+            }
+        }
+
+        async function updatePhotoCount() {
+            if (!currentUser || !db) {
+                photoCountSpan.textContent = "0";
+                return;
+            }
+            const photos = await getUserPhotos(currentUser);
+            photoCountSpan.textContent = photos.length;
+        }
+
+        async function checkAndTriggerReward() {
+            if (!currentUser) return false; // No rewards for guests
+
+            correctAnswersCounter++;
+            console.log(`Correct answers: ${correctAnswersCounter}`);
+
+            if (correctAnswersCounter >= REWARD_THRESHOLD) {
+                const photos = await getUserPhotos(currentUser);
+                if (photos.length > 0) {
+                    showReward(photos);
+                    correctAnswersCounter = 0; // Reset counter
+                    return true; // Reward triggered
+                }
+            }
+            return false;
+        }
+
+        function showReward(photos) {
+            // Filter out recently shown photos
+            const availablePhotos = photos.filter(p => !lastShownPhotos.includes(p.id));
+
+            // If all photos have been shown recently (or not enough photos), reset history
+            let pool = availablePhotos;
+            if (pool.length === 0) {
+                lastShownPhotos = [];
+                pool = photos;
+            }
+
+            // Pick random
+            const randomPhoto = pool[Math.floor(Math.random() * pool.length)];
+
+            // Add to history
+            lastShownPhotos.push(randomPhoto.id);
+            if (lastShownPhotos.length > 5) lastShownPhotos.shift();
+
+            // Display
+            const imgUrl = URL.createObjectURL(randomPhoto.image);
+            rewardImageContainer.innerHTML = `<img src="${imgUrl}" class="reward-image" alt="Beloning">`;
+
+            rewardModal.classList.remove('hidden');
+            confettiEffect();
         }
 
         // User Management Functions
@@ -552,15 +798,22 @@
             currentUser = name;
             userSelectionModal.classList.add('hidden');
             updatePlayerDisplay();
-            // Load user specific score if we wanted to implement that later
+            correctAnswersCounter = 0; // Reset session counter
+            lastShownPhotos = []; // Reset session history
         }
 
         function updatePlayerDisplay() {
             if (currentUser) {
                 playerDisplay.style.display = 'inline';
                 playerNameSpan.textContent = currentUser;
+
+                // Update Settings UI
+                rewardsSection.style.display = 'block';
+                settingsUserName.textContent = currentUser;
+                updatePhotoCount();
             } else {
                 playerDisplay.style.display = 'none';
+                rewardsSection.style.display = 'none';
             }
         }
 
@@ -733,19 +986,27 @@
         }
 
 
-        function handleSuccess() {
+        async function handleSuccess() {
             feedbackElement.textContent = `Goed zo! "${currentWord}" is correct! 🎉`;
             feedbackElement.style.color = "var(--success-color)";
             score++;
             scoreElement.textContent = score;
             wordElement.parentElement.classList.add('celebrate');
             confettiEffect();
-            nextBtn.style.display = "inline-block";
 
-            // Auto next after 2 seconds
-            setTimeout(() => {
-                if (nextBtn.style.display !== "none") nextWord();
-            }, 2000);
+            // Check for reward
+            const rewardTriggered = await checkAndTriggerReward();
+
+            if (!rewardTriggered) {
+                nextBtn.style.display = "inline-block";
+                // Auto next after 2 seconds
+                setTimeout(() => {
+                    if (nextBtn.style.display !== "none") nextWord();
+                }, 2000);
+            } else {
+                // If reward triggered, we don't auto-next. 
+                // The "Verder spelen" button in the modal will call nextWord()
+            }
         }
 
         function handleFailure(spoken) {
