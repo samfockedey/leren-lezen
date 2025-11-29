@@ -361,6 +361,55 @@
             font-size: 0.8rem;
             margin-left: 5px;
         }
+
+        /* Photo Grid Styles */
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 5px;
+        }
+
+        .photo-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .photo-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-item.selected {
+            border-color: var(--error-color);
+            transform: scale(0.95);
+        }
+
+        .photo-item.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 2rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            background: rgba(231, 76, 60, 0.7);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
     </style>
 </head>
 
@@ -444,10 +493,19 @@
                         📸 Klik hier om foto's toe te voegen
                         <input type="file" id="photo-input" multiple accept="image/*" style="display: none;">
                     </div>
-                    <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div
+                        style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                         <span>Aantal foto's: <span id="photo-count">0</span></span>
-                        <button id="clear-photos-btn" class="delete-user-btn" style="background: #e74c3c;">Wis alle
-                            foto's</button>
+                        <div>
+                            <button id="delete-selected-btn" class="delete-user-btn"
+                                style="background: #e74c3c; margin-right: 5px;" disabled>Verwijder selectie</button>
+                            <button id="clear-photos-btn" class="delete-user-btn" style="background: #95a5a6;">Wis
+                                alles</button>
+                        </div>
+                    </div>
+
+                    <div id="photo-grid" class="photo-grid">
+                        <!-- Photos will be rendered here -->
                     </div>
                 </div>
 
@@ -535,6 +593,7 @@
         let lastShownPhotos = []; // Keep track of IDs to avoid repeats
         const REWARD_THRESHOLD = 5;
         let db = null; // IndexedDB instance
+        let selectedPhotoIds = new Set();
 
 
 
@@ -573,7 +632,10 @@
         const settingsUserName = document.getElementById('settings-user-name');
         const photoInput = document.getElementById('photo-input');
         const photoCountSpan = document.getElementById('photo-count');
+
         const clearPhotosBtn = document.getElementById('clear-photos-btn');
+        const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+        const photoGrid = document.getElementById('photo-grid');
 
         // Initialize
         function init() {
@@ -616,6 +678,7 @@
 
             photoInput.addEventListener('change', handlePhotoUpload);
             clearPhotosBtn.addEventListener('click', clearUserPhotos);
+            deleteSelectedBtn.addEventListener('click', deleteSelectedPhotos);
         }
 
         // --- IndexedDB Implementation ---
@@ -671,8 +734,6 @@
             const objectStore = transaction.objectStore("photos");
             const index = objectStore.index("userId");
 
-            // This is a bit complex in IDB without a cursor, but for now we can just iterate
-            // Or simpler: get all keys for user and delete them
             const request = index.openCursor(IDBKeyRange.only(userId));
 
             request.onsuccess = (event) => {
@@ -682,7 +743,25 @@
                     cursor.continue();
                 } else {
                     updatePhotoCount();
+                    renderPhotoGrid();
                 }
+            };
+        }
+
+        function deletePhotosByIds(ids) {
+            if (!db) return;
+            const transaction = db.transaction(["photos"], "readwrite");
+            const objectStore = transaction.objectStore("photos");
+
+            ids.forEach(id => {
+                objectStore.delete(id);
+            });
+
+            transaction.oncomplete = () => {
+                updatePhotoCount();
+                renderPhotoGrid();
+                selectedPhotoIds.clear();
+                updateDeleteButtonState();
             };
         }
 
@@ -703,7 +782,10 @@
             }
 
             // Wait a bit for transactions to likely finish then update UI
-            setTimeout(updatePhotoCount, 500);
+            setTimeout(() => {
+                updatePhotoCount();
+                renderPhotoGrid();
+            }, 500);
             alert(`${processed} foto('s) toegevoegd!`);
             photoInput.value = ''; // Reset input
         }
@@ -722,6 +804,61 @@
             }
             const photos = await getUserPhotos(currentUser);
             photoCountSpan.textContent = photos.length;
+        }
+
+        async function renderPhotoGrid() {
+            if (!currentUser || !db) {
+                photoGrid.innerHTML = '';
+                return;
+            }
+            const photos = await getUserPhotos(currentUser);
+            photoGrid.innerHTML = '';
+
+            photos.forEach(photo => {
+                const div = document.createElement('div');
+                div.className = 'photo-item';
+                if (selectedPhotoIds.has(photo.id)) {
+                    div.classList.add('selected');
+                }
+
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(photo.image);
+                img.loading = "lazy";
+
+                div.appendChild(img);
+                div.onclick = () => togglePhotoSelection(photo.id, div);
+                photoGrid.appendChild(div);
+            });
+
+            // Clean up selection if photos were removed externally (though unlikely here)
+            // or just ensure button state is correct
+            updateDeleteButtonState();
+        }
+
+        function togglePhotoSelection(id, element) {
+            if (selectedPhotoIds.has(id)) {
+                selectedPhotoIds.delete(id);
+                element.classList.remove('selected');
+            } else {
+                selectedPhotoIds.add(id);
+                element.classList.add('selected');
+            }
+            updateDeleteButtonState();
+        }
+
+        function updateDeleteButtonState() {
+            deleteSelectedBtn.disabled = selectedPhotoIds.size === 0;
+            deleteSelectedBtn.textContent = selectedPhotoIds.size > 0
+                ? `Verwijder (${selectedPhotoIds.size})`
+                : "Verwijder selectie";
+        }
+
+        function deleteSelectedPhotos() {
+            if (selectedPhotoIds.size === 0) return;
+
+            if (confirm(`Weet je zeker dat je ${selectedPhotoIds.size} foto('s) wilt verwijderen?`)) {
+                deletePhotosByIds(Array.from(selectedPhotoIds));
+            }
         }
 
         async function checkAndTriggerReward() {
@@ -810,7 +947,9 @@
                 // Update Settings UI
                 rewardsSection.style.display = 'block';
                 settingsUserName.textContent = currentUser;
+                selectedPhotoIds.clear(); // Reset selection when switching user
                 updatePhotoCount();
+                renderPhotoGrid();
             } else {
                 playerDisplay.style.display = 'none';
                 rewardsSection.style.display = 'none';
